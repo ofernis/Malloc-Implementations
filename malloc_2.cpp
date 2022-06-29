@@ -34,7 +34,7 @@ void* BlocksLinkedList::allocateBlock(size_t size) {
     size_t allocation_size = size + sizeof(MetaData);
     MetaData iterator = this->list;
     while(iterator) {
-        if (iterator->size >= size || iterator->is_free) {
+        if (iterator->size >= size && iterator->is_free) {
             iterator->is_free = false;
             return iterator;
         }
@@ -53,21 +53,22 @@ void* BlocksLinkedList::allocateBlock(size_t size) {
     return prog_break;
 }
 
-void BlocksLinkedList::insertNewBlock(MetaData new_block) {
+void BlocksLinkedList::insertNewBlock(MetaData new_block)
+{
+    if(this->list==NULL)
+    {
+        this->list = new_block;
+        return;
+    }
     MetaData last = this->list;
-    MetaData prev = NULL;
-    
+    MetaData prev1 = last;
+
     while(last) {
-        prev = last;
+        prev1 = last;
         last = last->next;
     }
-    if (prev == NULL) {
-        this->list = new_block;
-    }
-    else {
-        prev->next = new_block;
-        new_block->prev = prev;
-    }
+        prev1->next = new_block;
+        new_block->prev = prev1;
 }
 
 void BlocksLinkedList::freeBlock(void* block) {
@@ -121,7 +122,9 @@ size_t BlocksLinkedList::getNumOfFreeBytes() {
 ///////////////////////////////////
 // Basic malloc implementations //
 /////////////////////////////////
-
+MetaData BlocksLinkedList::getMetaData(void *block) {
+    return MetaData ((char *) block - sizeof(MetaData));
+}
 BlocksLinkedList blocks_list =  BlocksLinkedList(); // init our global list
 
 void* smalloc(size_t size) {
@@ -193,5 +196,5 @@ size_t _num_meta_data_bytes() {
 }
 
 size_t _size_meta_data() {
-    return sizeof(MallocMetaData);
+    return sizeof(MetaData);
 }
