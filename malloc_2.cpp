@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <string.h>
+#include <iostream>
 
 #define MAX_VAL 100000000
 
@@ -24,6 +25,8 @@ class BlocksLinkedList {
         size_t getNumOfTotalBytes();
         size_t getNumOfFreeBlocks();
         size_t getNumOfFreeBytes();
+
+        void printBlocks();
 };
 
 ////////////////////////////////////
@@ -31,7 +34,7 @@ class BlocksLinkedList {
 //////////////////////////////////
 
 void* BlocksLinkedList::allocateBlock(size_t size) {
-    size_t allocation_size = size + sizeof(MetaData);
+    size_t allocation_size = size + sizeof(MallocMetaData);
     MetaData iterator = this->list;
     while(iterator) {
         if (iterator->size >= size && iterator->is_free) {
@@ -53,9 +56,8 @@ void* BlocksLinkedList::allocateBlock(size_t size) {
     return prog_break;
 }
 
-void BlocksLinkedList::insertNewBlock(MetaData new_block)
-{
-    if(this->list==NULL)
+void BlocksLinkedList::insertNewBlock(MetaData new_block) {
+    if(this->list == NULL)
     {
         this->list = new_block;
         return;
@@ -85,6 +87,20 @@ size_t BlocksLinkedList::getNumOfTotalBlocks() {
     return counter;
 }
 
+void BlocksLinkedList::printBlocks() {
+    MetaData iterator = this->list;
+    int counter = 1;
+    while (iterator) {
+        std::cout << "#########" << std::endl;
+        std::cout << "#########" << std::endl;
+        std::cout << "size of block number " << counter++ << " in bytes is " << iterator->size << std::endl;
+        std::cout << "#########" << std::endl;
+        std::cout << "#########" << std::endl;
+        std::cout << std::endl;
+        iterator = iterator->next;
+    }
+}
+
 size_t BlocksLinkedList::getNumOfTotalBytes() {
     MetaData iterator = this->list;
     size_t counter = 0;
@@ -92,6 +108,7 @@ size_t BlocksLinkedList::getNumOfTotalBytes() {
         counter += iterator->size;
         iterator = iterator->next;
     }
+    printBlocks();
     return counter;
 }
 
@@ -122,8 +139,9 @@ size_t BlocksLinkedList::getNumOfFreeBytes() {
 ///////////////////////////////////
 // Basic malloc implementations //
 /////////////////////////////////
+
 MetaData BlocksLinkedList::getMetaData(void *block) {
-    return MetaData ((char *) block - sizeof(MetaData));
+    return MetaData ((char *) block - sizeof(MallocMetaData));
 }
 BlocksLinkedList blocks_list =  BlocksLinkedList(); // init our global list
 
@@ -135,7 +153,7 @@ void* smalloc(size_t size) {
     if (prog_break == (void*) -1) {
         return NULL;
     }
-    return (char*) prog_break + sizeof(MetaData); // return the address of prog_break with an offset of the meta-data struct size
+    return (char*) prog_break + sizeof(MallocMetaData); // return the address of prog_break with an offset of the meta-data struct size
 }
 
 void* scalloc(size_t num, size_t size) {
@@ -192,9 +210,9 @@ size_t _num_allocated_bytes() {
 }
 
 size_t _num_meta_data_bytes() {
-    return sizeof(MetaData) * blocks_list.getNumOfTotalBlocks();
+    return sizeof(MallocMetaData) * blocks_list.getNumOfTotalBlocks();
 }
 
 size_t _size_meta_data() {
-    return sizeof(MetaData);
+    return sizeof(MallocMetaData);
 }
