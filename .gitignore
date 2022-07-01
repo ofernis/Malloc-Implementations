@@ -506,3 +506,8 @@ tests/malloc_3_test_srealloc_cases.cpp
 tests/malloc_3_test_srealloc.cpp
 tests/malloc_4_test.cpp
 tests/my_stdlib.h
+a.out
+x.c
+.vscode/settings.json
+build/tests/Testing/Temporary/CTestCheckpoint.txt
+build/tests/Testing/Temporary/LastTest.log.tmp

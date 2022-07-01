@@ -2,8 +2,8 @@
 #include <string.h>
 #include <sys/mman.h>
 
-#define MAX_VAL 100000000
-#define SIZE_FOR_MAP 128 * 1024
+#define MAX_VAL (100000000)
+#define MAP_SIZE (128 * 1024)
 
 typedef struct MallocMetaData {
     size_t size;
@@ -18,8 +18,12 @@ class BlocksLinkedList {
 private:
     MetaData list;
     MetaData list_by_size;
+
 public:
-    BlocksLinkedList() : list(NULL),list_by_size(NULL) {};
+    size_t num_of_map;
+    size_t bytes_of_map;
+    BlocksLinkedList() : list(NULL),list_by_size(NULL),
+    num_of_map(0),bytes_of_map(0) {};
     void* allocateBlock(size_t size);
     void insertNewBlock(MetaData new_block);
     void freeBlock(void* block);
@@ -42,34 +46,28 @@ public:
 ////////////////////////////////////
 // Class methods implementations //
 //////////////////////////////////
-
 MetaData BlocksLinkedList::get_metadata(void *block) {
-    return MetaData ((char *) block - sizeof(MallocMetaData));
+    return (MetaData) ((size_t) block - sizeof(MallocMetaData));
 }
 void* BlocksLinkedList::allocateBlock(size_t size) {
     size_t allocation_size = size + sizeof(MallocMetaData);
-    MetaData iterator = this->list_by_size,wilderness;
+    MetaData iterator = this->list_by_size,wilderness=NULL;
     while(iterator)
     {
         if (iterator->size >= size && iterator->is_free)
         {
             iterator->is_free = false;
-            if(iterator->prev_by_size==NULL)
-            {
-                this->list_by_size=iterator->next_by_size;
-            }
-            else
-            {
-                iterator->prev_by_size->next_by_size=iterator->next_by_size;
-            }
+            removeFromListSize(iterator);
             return iterator;
+
+            ////split?
         }
         wilderness=iterator;
         iterator = iterator->next;
     }
     if(wilderness&&wilderness->is_free)
     {
-        void* prog_break = sbrk(allocation_size-wilderness->size);
+        void* prog_break = sbrk(alignTo8(allocation_size-wilderness->size));
         if (prog_break == (void*) -1) {
             return NULL;
         }
@@ -77,9 +75,8 @@ void* BlocksLinkedList::allocateBlock(size_t size) {
         wilderness->size=alignTo8(allocation_size);
         wilderness->is_free= false;
         return prog_break;
-        //insertToListSize(wilderness);
     }
-    void* prog_break = sbrk(allocation_size);
+    void* prog_break = sbrk(alignTo8(allocation_size));
     if (prog_break == (void*) -1) {
         return NULL;
     }
@@ -97,46 +94,64 @@ void* BlocksLinkedList::allocateBlock(size_t size) {
 void BlocksLinkedList::insertNewBlock(MetaData new_block) {
 
     //to list by address to the end
+    if(this->list==NULL)
+    {
+        this->list = new_block;
+        return;
+    }
     MetaData last = this->list;
-    MetaData prev = NULL;
+    MetaData prev1 = last;
+
     while(last) {
-        prev = last;
+        prev1 = last;
         last = last->next;
     }
-    if (prev == NULL) {
-        this->list = new_block;
-    }
-    else {
-        prev->next = new_block;
-        new_block->prev = prev;
-    }
-
+    prev1->next = new_block;
+    new_block->prev = prev1;
 
 }
 void BlocksLinkedList::insertToListSize(MetaData block) {
-    MetaData iterator = this->list_by_size,prev;
+    MetaData iterator = this->list_by_size,prev=NULL;
     while (iterator) {
-        prev=iterator;
-        if (iterator->size >= block->size && (&iterator) >= (&block)) {
-
+        if (iterator->size >= block->size && iterator > block) {
             if (iterator->prev_by_size == NULL) {
                 block->next_by_size= this->list_by_size;
                 block->next_by_size->prev_by_size=block;
                 this->list_by_size =block;
-
-            } else {
-                block->next_by_size= iterator->next_by_size;
+            } else if (iterator == NULL) {
+                prev->next_by_size= block;
+                block->prev_by_size=prev;
+                block->next_by_size=NULL;
+            }
+            else
+            {
+                block->next_by_size= iterator;
                 block->next_by_size->prev_by_size=block;
                 block->prev_by_size=prev;
-                block->prev_by_size->next_by_size=block;
+                if(prev!=NULL)
+                {
+                    block->prev_by_size->next_by_size=block;
+                }
             }
             return;
         }
-        iterator = iterator->next;
+        prev=iterator;
+        iterator = iterator->next_by_size;
+    }
+    if(prev==NULL)
+    {
+        this->list_by_size=block;
+        block->next_by_size=NULL;
+        block->prev_by_size=NULL;
+        return;
     }
     prev->next_by_size=block;
     block->prev_by_size=prev;
-    block->next_by_size=NULL;
+    block->next_by_size=iterator;
+    if(iterator!=NULL)
+    {
+        iterator->prev_by_size=block;
+    }
 }
 
 void BlocksLinkedList::removeFromListAddress(MetaData block)
@@ -144,16 +159,24 @@ void BlocksLinkedList::removeFromListAddress(MetaData block)
     if (block->prev== NULL)//block is first
     {
         this->list = block->next;
+        block->next=NULL;
+        if(this->list)
+        {
+            this->list->prev=NULL;
+        }
         return;
     }
         // block is last
     else if (block->next == NULL) {
         block->prev->next = NULL;
+        block->prev = NULL;
         return;
     }
     else {
         block->prev->next = block->next;
         block->next->prev = block->prev;
+        block->prev = NULL;
+        block->next = NULL;
     }
 
 }
@@ -163,48 +186,58 @@ void BlocksLinkedList::removeFromListSize(MetaData block)
     if (block->prev_by_size == NULL)//block is smallest
     {
         this->list_by_size = block->next_by_size;
+        block->next_by_size=NULL;
+        if(this->list_by_size)
+        {
+            this->list_by_size->prev_by_size=NULL;
+        }
         return;
     }
         // block is largest
     else if (block->next_by_size == NULL) {
         block->prev_by_size->next_by_size = NULL;
+        block->prev_by_size = NULL;
         return;
     }
     else {
         block->prev_by_size->next_by_size = block->next_by_size;
         block->next_by_size->prev_by_size = block->prev_by_size;
+        block->prev_by_size = NULL;
+        block->next_by_size = NULL;
     }
 
 }
 int BlocksLinkedList::alignTo8(size_t size) {
-    if((size+sizeof(MallocMetaData))%8==0) {
-        return size+sizeof(MallocMetaData);
+    if(size%8==0) {
+        return size;
     }
-    return (8-(size+sizeof(MallocMetaData))%8)+size+sizeof(MallocMetaData);
+    return size+8-(size%8);
 }
 
 void BlocksLinkedList::freeBlock(void* ptr) {
     MetaData block=get_metadata(ptr);
     block->is_free = true;
+
     if(block->next!=NULL && block->next->is_free&&
        block->prev!=NULL && block->prev->is_free)
     {
-        removeFromListSize(block);
+        MetaData prev_block=block->prev;
         removeFromListSize(block->prev);
         removeFromListSize(block->next);
         block->prev->size = alignTo8(block->prev->size + block->size + 2*sizeof(MallocMetaData)+ block->next->size);
         removeFromListAddress(block->next);
         removeFromListAddress(block);
-        insertToListSize(block->prev);
+        insertToListSize(prev_block);
     }
     else if(block->prev!=NULL && block->prev->is_free)//need to merge block with block before
     {
+        MetaData prev_block=block->prev;
         removeFromListSize(block);
         removeFromListSize(block->prev);
 
         block->prev->size = alignTo8(block->prev->size + block->size + sizeof(MallocMetaData));
         removeFromListAddress(block);
-        insertToListSize(block->prev);
+        insertToListSize(prev_block);
     }
     else if(block->next!=NULL && block->next->is_free)//need to merge block with block before
     {
@@ -213,6 +246,10 @@ void BlocksLinkedList::freeBlock(void* ptr) {
 
         block->size = alignTo8(block->size + block->next->size + sizeof(MallocMetaData));
         removeFromListAddress(block->next);
+        insertToListSize(block);
+    }
+    else
+    {
         insertToListSize(block);
     }
 }
@@ -246,11 +283,12 @@ size_t BlocksLinkedList::getNumOfTotalBlocks() {
     MetaData iterator = this->list;
     size_t counter = 0;
     while (iterator) {
-        if (iterator->size <= SIZE_FOR_MAP) {
+        if (iterator->size <= MAP_SIZE) {
             counter++;
             iterator = iterator->next;
         }
     }
+    counter+=this->num_of_map;
     return counter;
 }
 
@@ -258,11 +296,12 @@ size_t BlocksLinkedList::getNumOfTotalBytes() {
     MetaData iterator = this->list;
     size_t counter = 0;
     while (iterator) {
-        if(iterator->size<=SIZE_FOR_MAP) {
+        if(iterator->size<=MAP_SIZE) {
             counter += iterator->size;
             iterator = iterator->next;
         }
     }
+    counter+=this->bytes_of_map;
     return counter;
 }
 
@@ -270,7 +309,7 @@ size_t BlocksLinkedList::getNumOfFreeBlocks() {
     MetaData iterator = this->list;
     size_t counter = 0;
     while (iterator) {
-        if(iterator->is_free&&iterator->size<=SIZE_FOR_MAP) {
+        if(iterator->is_free&&iterator->size<=MAP_SIZE) {
             counter++;
         }
         iterator = iterator->next;
@@ -282,7 +321,7 @@ size_t BlocksLinkedList::getNumOfFreeBytes() {
     MetaData iterator = this->list;
     size_t counter = 0;
     while (iterator) {
-        if (iterator->is_free&&iterator->size<=SIZE_FOR_MAP) {
+        if (iterator->is_free&&iterator->size<=MAP_SIZE) {
             counter += iterator->size;
         }
         iterator = iterator->next;
@@ -299,16 +338,18 @@ void* smalloc(size_t size) {
     if (size == 0 || size > MAX_VAL) {
         return NULL;
     }
-    if (size > SIZE_FOR_MAP) {
+    if (size > MAP_SIZE) {
         void *block = mmap(NULL, sizeof(MallocMetaData) + size, PROT_READ | PROT_WRITE,
                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (block == MAP_FAILED) {
             return NULL;
         }
-        ((MetaData)block)->is_free = false;
-        ((MetaData)block)->size = size;
-
-        return block;
+        MetaData my_block=(MetaData)block;
+        my_block->is_free = false;
+        my_block->size = size;
+        blocks_list.bytes_of_map+=size;
+        blocks_list.num_of_map++;
+        return (char*)block+sizeof(MallocMetaData);
     }
 
     void* prog_break = blocks_list.allocateBlock(size);
@@ -332,8 +373,11 @@ void sfree(void* p) {
         return;
     }
     MetaData data=blocks_list.get_metadata(p);
-    if(data->size>SIZE_FOR_MAP)
+
+    if(data->size>MAP_SIZE)
     {
+        blocks_list.num_of_map--;
+        blocks_list.bytes_of_map-=data->size;
         munmap(data, sizeof(MallocMetaData) + data->size);
     }
     else
@@ -349,7 +393,7 @@ void* srealloc(void* oldp, size_t size) {
     if (oldp == NULL) {
         return smalloc(size);
     }
-    MetaData oldb = blocks_list.get_metadata(oldp); //check if need to use memset
+    MetaData oldb = blocks_list.get_metadata(oldp);//check if need to use memset
     size_t size_old = oldb->size;
     if (size <= size_old) { //case A use same block
         oldb->size=size;
