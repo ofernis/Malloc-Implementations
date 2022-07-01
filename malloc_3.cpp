@@ -475,16 +475,16 @@ void* srealloc(void* oldp, size_t size) {
         }
     }//case A to D failed
 
-    possible_size=size_old;
-    if(oldb->prev&&oldb->prev->is_free)
+    possible_size = size_old;
+    if(oldb->prev && oldb->prev->is_free)
     {
-        possible_size+=oldb->prev->size+sizeof(MallocMetaData);
+        possible_size += oldb->prev->size + sizeof(MallocMetaData);
     }
-    if(oldb->next&&oldb->next->is_free)
+    if(oldb->next && oldb->next->is_free)
     {
-        possible_size+=oldb->next->size+sizeof(MallocMetaData);
+        possible_size += oldb->next->size+sizeof(MallocMetaData);
     }
-    if(possible_size>=size)
+    if(possible_size >= size)
     {//case E try all three blocks
         MetaData prev_block = oldb->prev;
         blocks_list.removeFromListSize(oldb);
@@ -498,31 +498,37 @@ void* srealloc(void* oldp, size_t size) {
     }
     else
     {
-        if(oldb->next->next==NULL) //wilderness case F1 F2
+        if(oldb->next->next == NULL) //wilderness case F1 F2
         {
-            void* prog_break = sbrk(blocks_list.alignTo8(size-possible_size-sizeof(MallocMetaData)));
+            void* prog_break = sbrk(blocks_list.alignTo8(size - possible_size));
             if (prog_break == (void*) -1) {
                 return NULL;
             }
             blocks_list.removeFromListSize(oldb);
             blocks_list.removeFromListSize(oldb->next);
-            oldb->size=blocks_list.alignTo8(size);
-            oldb->is_free= false;
+            oldb->size = blocks_list.alignTo8(size);
+            oldb->is_free = false;
             blocks_list.removeFromListAddress(oldb->next);
-            if(oldb->prev&&oldb->prev->is_free)
+            if(oldb->prev && oldb->prev->is_free)
             {
-                oldb->prev->size=oldb->size;//case F1
-                oldb->prev->is_free= false;
+                MetaData prev_block = oldb->prev; //case F1
+                prev_block->size = oldb->size;
+                prev_block->is_free = false;
+                blocks_list.removeFromListSize(oldb);
                 blocks_list.removeFromListSize(oldb->prev);
                 blocks_list.removeFromListAddress(oldb);
+                memmove( (char *) prev_block + sizeof(MallocMetaData), oldp, oldb->size);
+                return (char *) prev_block + sizeof(MallocMetaData);
             }
 
             return oldp;
         }
         else
         {
+            void* newp = smalloc(size);
+            memmove(newp, oldp, oldb->size);
             sfree(oldp);//case G + H
-            return smalloc(size);
+            return newp;
         }
     }
 
