@@ -46,34 +46,33 @@ public:
 ////////////////////////////////////
 // Class methods implementations //
 //////////////////////////////////
+
 MetaData BlocksLinkedList::get_metadata(void *block) {
     return (MetaData) ((size_t) block - sizeof(MallocMetaData));
 }
 void* BlocksLinkedList::allocateBlock(size_t size) {
     size_t allocation_size = size + sizeof(MallocMetaData);
-    MetaData iterator = this->list_by_size,wilderness=NULL;
+    MetaData iterator = this->list_by_size, wilderness = NULL;
     while(iterator)
     {
         if (iterator->size >= size && iterator->is_free)
         {
+            split(iterator, size);
             iterator->is_free = false;
             removeFromListSize(iterator);
-            split()
             return iterator;
-
-            
         }
-        wilderness=iterator;
+        wilderness = iterator;
         iterator = iterator->next;
     }
-    if(wilderness&&wilderness->is_free)
+    if(wilderness && wilderness->is_free)
     {
         void* prog_break = sbrk(alignTo8(size-wilderness->size));
         if (prog_break == (void*) -1) {
             return NULL;
         }
         removeFromListSize(wilderness);
-        wilderness->size=alignTo8(allocation_size- sizeof(MallocMetaData));
+        wilderness->size=alignTo8(allocation_size - sizeof(MallocMetaData));
         wilderness->is_free= false;
         return wilderness;
     }
@@ -114,7 +113,7 @@ void BlocksLinkedList::insertNewBlock(MetaData new_block) {
 void BlocksLinkedList::insertToListSize(MetaData block) {
     MetaData iterator = this->list_by_size,prev=NULL;
     while (iterator) {
-        if (iterator->size >= block->size && iterator > block) {
+        if (iterator->size > block->size || (iterator->size == block->size && iterator > block)) {
             if (iterator->prev_by_size == NULL) {
                 block->next_by_size= this->list_by_size;
                 block->next_by_size->prev_by_size=block;
@@ -254,32 +253,35 @@ void BlocksLinkedList::freeBlock(void* ptr) {
         insertToListSize(block);
     }
 }
-void BlocksLinkedList::split(MetaData block,size_t size)
-{
-    if(block->size-size-sizeof(MallocMetaData)>128)
-    {
-        //need to split blocks challenge 1
-        MetaData new_alloc=(MetaData) ((char *) block + size +sizeof(MallocMetaData));
-        new_alloc->is_free=true;
-        new_alloc->size=block->size-size-sizeof(MallocMetaData);
-        if(block->next&&block->next->is_free)
-        {
-            new_alloc->size+=block->next->size+sizeof(MallocMetaData);
-            removeFromListAddress(block->next);
-            removeFromListSize(block->next);
-        }
-        new_alloc->size= alignTo8(new_alloc->size);
-        insertToListSize(new_alloc);
-        new_alloc->next=block->next;
 
-        new_alloc->prev=block;
-        if(block->next!=NULL)
-        {
-            block->next->prev = new_alloc;
-        }
-        block->next=new_alloc;
+void BlocksLinkedList::split(MetaData block, size_t size)
+{
+    if(block->size < 128 + size + sizeof(MallocMetaData)) 
+    {
+        return;
     }
+    // split blocks challenge 1
+    MetaData new_alloc = (MetaData) ((char *) block + size + sizeof(MallocMetaData));
+    new_alloc->is_free = true;
+    new_alloc->size = block->size - alignTo8(size) - sizeof(MallocMetaData);
+    block->size = alignTo8(size);
+    if(block->next && block->next->is_free)
+    {
+        new_alloc->size += block->next->size + sizeof(MallocMetaData);
+        removeFromListAddress(block->next);
+        removeFromListSize(block->next_by_size);
+    }
+    insertToListSize(new_alloc);
+    removeFromListSize(block);
+    new_alloc->next = block->next;
+    new_alloc->prev = block;
+    if(block->next != NULL)
+    {
+        block->next->prev = new_alloc;
+    }
+    block->next = new_alloc;
 }
+
 size_t BlocksLinkedList::getNumOfTotalBlocks() {
     MetaData iterator = this->list;
     size_t counter = 0;
@@ -297,12 +299,12 @@ size_t BlocksLinkedList::getNumOfTotalBytes() {
     MetaData iterator = this->list;
     size_t counter = 0;
     while (iterator) {
-        if(iterator->size<=MAP_SIZE) {
+        if(iterator->size <= MAP_SIZE) {
             counter += iterator->size;
             iterator = iterator->next;
         }
     }
-    counter+=this->bytes_of_map;
+    counter += this->bytes_of_map;
     return counter;
 }
 
@@ -339,10 +341,10 @@ void* smalloc(size_t size) {
     if (size == 0 || size > MAX_VAL) {
         return NULL;
     }
-    size_t left= ((size_t)sbrk(0))%8;
-    if (left!=0)
+    size_t left = ((size_t)sbrk(0)) % 8;
+    if (left != 0)
     {
-        sbrk(8-left);
+        sbrk(8 - left);
     }
     if (size >= MAP_SIZE) {
         void *block = mmap(NULL, blocks_list.alignTo8(sizeof(MallocMetaData) + size), PROT_READ | PROT_WRITE,
@@ -399,57 +401,76 @@ void* srealloc(void* oldp, size_t size) {
     if (oldp == NULL) {
         return smalloc(size);
     }
-    MetaData oldb = blocks_list.get_metadata(oldp);//check if need to use memset
+    MetaData oldb = blocks_list.get_metadata(oldp);
+    if (oldb->size >= MAP_SIZE)
+    {
+        if (oldb->size == size)
+        {
+            return oldp;
+        }
+        sfree(oldp);
+        return smalloc(size);
+    }
     size_t size_old = oldb->size;
     if (size <= size_old) { //case A use same block
-        oldb->size=size;
         blocks_list.split(oldb,size);
         return oldp;
     }
-    unsigned int possible_size=size_old;
-    if(oldb->prev&&oldb->prev->is_free)
+    unsigned int possible_size = size_old;
+    if(oldb->prev && oldb->prev->is_free)
     {
-        possible_size+=oldb->prev->size+sizeof(MallocMetaData);
+        possible_size += oldb->prev->size + sizeof(MallocMetaData);
     }
-    if(possible_size>=size)
+    if (possible_size >= size)
     {//case B try adjacent prev block
+        MetaData prev_block = oldb->prev;
         blocks_list.removeFromListSize(oldb);
         blocks_list.removeFromListSize(oldb->prev);
-
-        oldb->prev->size = blocks_list.alignTo8(oldb->prev->size + oldb->size + sizeof(MallocMetaData));
+        oldb->prev->size = blocks_list.alignTo8(possible_size);
+        oldb->prev->is_free = false;
+        blocks_list.split(oldb->prev, size);
         blocks_list.removeFromListAddress(oldb);
-        oldb->prev->is_free= false;
-        blocks_list.split(oldb->prev,size);
-        return oldb->prev;
+        memmove( (char *) prev_block + sizeof(MallocMetaData), oldp, oldb->size);
+        return (char *) prev_block + sizeof(MallocMetaData);
     }
     else
     {
-        if(oldb->next==NULL)//wilderness case B2 + C
+        if(oldb->next == NULL) //wilderness case B2 + C
         {
-            void* prog_break = sbrk(blocks_list.alignTo8(size-possible_size-sizeof(MallocMetaData)));
+            void* prog_break = sbrk(blocks_list.alignTo8(size - possible_size));
             if (prog_break == (void*) -1) {
                 return NULL;
             }
-            blocks_list.removeFromListSize(oldb);
-            oldb->size=blocks_list.alignTo8(size);
-            oldb->is_free= false;
-            return oldb;
+            if(oldb->prev != NULL)
+            {
+                MetaData prev_block = oldb->prev;
+                oldb->prev->size = blocks_list.alignTo8(size);
+                oldb->prev->is_free = false;
+                blocks_list.removeFromListAddress(oldb);
+                memmove( (char *) prev_block + sizeof(MallocMetaData), oldp, oldb->size);
+                return  ((char *) prev_block) + sizeof(MallocMetaData);
+            }
+            else {
+                oldb->size = blocks_list.alignTo8(size);
+                oldb->is_free = false;
+                return oldp;
+            }
         }
         else
         {//not wilderness case
-            possible_size=size_old;
+            possible_size = size_old;
             if(oldb->next->is_free)
             {
-                possible_size+=oldb->next->size+sizeof(MallocMetaData);
+                possible_size += oldb->next->size + sizeof(MallocMetaData);
             }
-            if(possible_size>=size)
+            if(possible_size >= size)
             {//case D merge higher address
                 blocks_list.removeFromListSize(oldb);
                 blocks_list.removeFromListSize(oldb->next);
                 oldb->size = blocks_list.alignTo8(oldb->next->size + oldb->size + sizeof(MallocMetaData));
                 blocks_list.removeFromListAddress(oldb->next);
                 blocks_list.split(oldb,size);
-                return oldb;
+                return oldp;
             }
         }
     }//case A to D failed
@@ -465,17 +486,19 @@ void* srealloc(void* oldp, size_t size) {
     }
     if(possible_size>=size)
     {//case E try all three blocks
+        MetaData prev_block = oldb->prev;
         blocks_list.removeFromListSize(oldb);
         blocks_list.removeFromListSize(oldb->prev);
         blocks_list.removeFromListSize(oldb->next);
-        oldb->prev->size = blocks_list.alignTo8(size);
-        blocks_list.removeFromListAddress(oldb);
+        oldb->prev->size = blocks_list.alignTo8(possible_size);
         blocks_list.removeFromListAddress(oldb->next);
-        return oldb->prev;
+        blocks_list.removeFromListAddress(oldb);
+        memmove( (char *) prev_block + sizeof(MallocMetaData), oldp, oldb->size);
+        return (char *) prev_block + sizeof(MallocMetaData);
     }
     else
     {
-        if(oldb->next->next==NULL)//wilderness case F1 F2
+        if(oldb->next->next==NULL) //wilderness case F1 F2
         {
             void* prog_break = sbrk(blocks_list.alignTo8(size-possible_size-sizeof(MallocMetaData)));
             if (prog_break == (void*) -1) {
@@ -494,24 +517,20 @@ void* srealloc(void* oldp, size_t size) {
                 blocks_list.removeFromListAddress(oldb);
             }
 
-            return oldb;
+            return oldp;
         }
         else
         {
             sfree(oldp);//case G + H
-            smalloc(size);
+            return smalloc(size);
         }
     }
-
-
-
-
 
     void* newp = smalloc(size);
     if (newp == NULL) {
         return NULL;
     }
-    memcpy(newp, oldp, oldb->size);
+    memmove(newp, oldp, oldb->size);
     sfree(oldp);
     return newp;
 }

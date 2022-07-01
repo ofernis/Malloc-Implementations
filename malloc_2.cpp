@@ -26,7 +26,7 @@ class BlocksLinkedList {
         size_t getNumOfFreeBlocks();
         size_t getNumOfFreeBytes();
 
-        void printBlocks();
+        //void printBlocks();
 };
 
 ////////////////////////////////////
@@ -87,19 +87,19 @@ size_t BlocksLinkedList::getNumOfTotalBlocks() {
     return counter;
 }
 
-void BlocksLinkedList::printBlocks() {
-    MetaData iterator = this->list;
-    int counter = 1;
-    while (iterator) {
-        std::cout << "#########" << std::endl;
-        std::cout << "#########" << std::endl;
-        std::cout << "size of block number " << counter++ << " in bytes is " << iterator->size << std::endl;
-        std::cout << "#########" << std::endl;
-        std::cout << "#########" << std::endl;
-        std::cout << std::endl;
-        iterator = iterator->next;
-    }
-}
+// void BlocksLinkedList::printBlocks() {
+//     MetaData iterator = this->list;
+//     int counter = 1;
+//     while (iterator) {
+//         std::cout << "#########" << std::endl;
+//         std::cout << "#########" << std::endl;
+//         std::cout << "size of block number " << counter++ << " in bytes is " << iterator->size << std::endl;
+//         std::cout << "#########" << std::endl;
+//         std::cout << "#########" << std::endl;
+//         std::cout << std::endl;
+//         iterator = iterator->next;
+//     }
+// }
 
 size_t BlocksLinkedList::getNumOfTotalBytes() {
     MetaData iterator = this->list;
@@ -108,7 +108,7 @@ size_t BlocksLinkedList::getNumOfTotalBytes() {
         counter += iterator->size;
         iterator = iterator->next;
     }
-    printBlocks();
+    //printBlocks();
     return counter;
 }
 
@@ -188,7 +188,7 @@ void* srealloc(void* oldp, size_t size) {
     if (newp == NULL) {
         return NULL;
     }
-    memcpy(newp, oldp, oldb->size);
+    memmove(newp, oldp, oldb->size);
     sfree(oldp);
     return newp;
 }
