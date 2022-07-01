@@ -58,23 +58,24 @@ void* BlocksLinkedList::allocateBlock(size_t size) {
         {
             iterator->is_free = false;
             removeFromListSize(iterator);
+            split()
             return iterator;
 
-            ////split?
+            
         }
         wilderness=iterator;
         iterator = iterator->next;
     }
     if(wilderness&&wilderness->is_free)
     {
-        void* prog_break = sbrk(alignTo8(allocation_size-wilderness->size));
+        void* prog_break = sbrk(alignTo8(size-wilderness->size));
         if (prog_break == (void*) -1) {
             return NULL;
         }
         removeFromListSize(wilderness);
-        wilderness->size=alignTo8(allocation_size);
+        wilderness->size=alignTo8(allocation_size- sizeof(MallocMetaData));
         wilderness->is_free= false;
-        return prog_break;
+        return wilderness;
     }
     void* prog_break = sbrk(alignTo8(allocation_size));
     if (prog_break == (void*) -1) {
@@ -338,16 +339,21 @@ void* smalloc(size_t size) {
     if (size == 0 || size > MAX_VAL) {
         return NULL;
     }
-    if (size > MAP_SIZE) {
-        void *block = mmap(NULL, sizeof(MallocMetaData) + size, PROT_READ | PROT_WRITE,
+    size_t left= ((size_t)sbrk(0))%8;
+    if (left!=0)
+    {
+        sbrk(8-left);
+    }
+    if (size >= MAP_SIZE) {
+        void *block = mmap(NULL, blocks_list.alignTo8(sizeof(MallocMetaData) + size), PROT_READ | PROT_WRITE,
                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (block == MAP_FAILED) {
             return NULL;
         }
         MetaData my_block=(MetaData)block;
         my_block->is_free = false;
-        my_block->size = size;
-        blocks_list.bytes_of_map+=size;
+        my_block->size = blocks_list.alignTo8(size);
+        blocks_list.bytes_of_map+=blocks_list.alignTo8(size);
         blocks_list.num_of_map++;
         return (char*)block+sizeof(MallocMetaData);
     }
@@ -374,7 +380,7 @@ void sfree(void* p) {
     }
     MetaData data=blocks_list.get_metadata(p);
 
-    if(data->size>MAP_SIZE)
+    if(data->size>=MAP_SIZE)
     {
         blocks_list.num_of_map--;
         blocks_list.bytes_of_map-=data->size;

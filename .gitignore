@@ -495,17 +495,6 @@ os_hw4_tests/tests/malloc_3_test_srealloc_cases.cpp
 os_hw4_tests/tests/malloc_3_test_srealloc.cpp
 os_hw4_tests/tests/malloc_4_test.cpp
 os_hw4_tests/tests/my_stdlib.h
-tests/CMakeLists.txt
-tests/malloc_1_test.cpp
-tests/malloc_2_test.cpp
-tests/malloc_3_test_basic.cpp
-tests/malloc_3_test_reuse.cpp
-tests/malloc_3_test_scalloc.cpp
-tests/malloc_3_test_split_and_merge.cpp
-tests/malloc_3_test_srealloc_cases.cpp
-tests/malloc_3_test_srealloc.cpp
-tests/malloc_4_test.cpp
-tests/my_stdlib.h
 a.out
 x.c
 .vscode/settings.json
