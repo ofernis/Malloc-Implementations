@@ -1,6 +1,5 @@
 #include <unistd.h>
 #include <string.h>
-#include <iostream>
 
 #define MAX_VAL 100000000
 
@@ -25,8 +24,6 @@ class BlocksLinkedList {
         size_t getNumOfTotalBytes();
         size_t getNumOfFreeBlocks();
         size_t getNumOfFreeBytes();
-
-        //void printBlocks();
 };
 
 ////////////////////////////////////
@@ -56,8 +53,9 @@ void* BlocksLinkedList::allocateBlock(size_t size) {
     return prog_break;
 }
 
-void BlocksLinkedList::insertNewBlock(MetaData new_block) {
-    if(this->list == NULL)
+void BlocksLinkedList::insertNewBlock(MetaData new_block)
+{
+    if(this->list==NULL)
     {
         this->list = new_block;
         return;
@@ -87,20 +85,6 @@ size_t BlocksLinkedList::getNumOfTotalBlocks() {
     return counter;
 }
 
-// void BlocksLinkedList::printBlocks() {
-//     MetaData iterator = this->list;
-//     int counter = 1;
-//     while (iterator) {
-//         std::cout << "#########" << std::endl;
-//         std::cout << "#########" << std::endl;
-//         std::cout << "size of block number " << counter++ << " in bytes is " << iterator->size << std::endl;
-//         std::cout << "#########" << std::endl;
-//         std::cout << "#########" << std::endl;
-//         std::cout << std::endl;
-//         iterator = iterator->next;
-//     }
-// }
-
 size_t BlocksLinkedList::getNumOfTotalBytes() {
     MetaData iterator = this->list;
     size_t counter = 0;
@@ -108,7 +92,6 @@ size_t BlocksLinkedList::getNumOfTotalBytes() {
         counter += iterator->size;
         iterator = iterator->next;
     }
-    //printBlocks();
     return counter;
 }
 
@@ -139,7 +122,6 @@ size_t BlocksLinkedList::getNumOfFreeBytes() {
 ///////////////////////////////////
 // Basic malloc implementations //
 /////////////////////////////////
-
 MetaData BlocksLinkedList::getMetaData(void *block) {
     return MetaData ((char *) block - sizeof(MallocMetaData));
 }
@@ -188,7 +170,7 @@ void* srealloc(void* oldp, size_t size) {
     if (newp == NULL) {
         return NULL;
     }
-    memmove(newp, oldp, oldb->size);
+    memcpy(newp, oldp, oldb->size);
     sfree(oldp);
     return newp;
 }

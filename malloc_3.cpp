@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <iostream>
 
 #define MAX_VAL (100000000)
 #define MAP_SIZE (128 * 1024)
@@ -23,7 +24,7 @@ public:
     size_t num_of_map;
     size_t bytes_of_map;
     BlocksLinkedList() : list(NULL),list_by_size(NULL),
-    num_of_map(0),bytes_of_map(0) {};
+                         num_of_map(0),bytes_of_map(0) {};
     void* allocateBlock(size_t size);
     void insertNewBlock(MetaData new_block);
     void freeBlock(void* block);
@@ -41,6 +42,9 @@ public:
     size_t getNumOfFreeBlocks();
     size_t getNumOfFreeBytes();
     //size_t _size_meta_data();
+
+    void printFreeBlocks();
+
 };
 
 ////////////////////////////////////
@@ -215,23 +219,23 @@ int BlocksLinkedList::alignTo8(size_t size) {
 }
 
 void BlocksLinkedList::freeBlock(void* ptr) {
-    MetaData block=get_metadata(ptr);
+    MetaData block = get_metadata(ptr);
     block->is_free = true;
 
-    if(block->next!=NULL && block->next->is_free&&
-       block->prev!=NULL && block->prev->is_free)
+    if(block->next != NULL && block->next->is_free &&
+       block->prev != NULL && block->prev->is_free)
     {
-        MetaData prev_block=block->prev;
+        MetaData prev_block = block->prev;
         removeFromListSize(block->prev);
         removeFromListSize(block->next);
-        block->prev->size = alignTo8(block->prev->size + block->size + 2*sizeof(MallocMetaData)+ block->next->size);
+        block->prev->size = alignTo8(block->prev->size + block->size + 2 * sizeof(MallocMetaData)+ block->next->size);
         removeFromListAddress(block->next);
         removeFromListAddress(block);
         insertToListSize(prev_block);
     }
-    else if(block->prev!=NULL && block->prev->is_free)//need to merge block with block before
+    else if(block->prev != NULL && block->prev->is_free)//need to merge block with block before
     {
-        MetaData prev_block=block->prev;
+        MetaData prev_block = block->prev;
         removeFromListSize(block);
         removeFromListSize(block->prev);
 
@@ -239,7 +243,7 @@ void BlocksLinkedList::freeBlock(void* ptr) {
         removeFromListAddress(block);
         insertToListSize(prev_block);
     }
-    else if(block->next!=NULL && block->next->is_free)//need to merge block with block before
+    else if(block->next != NULL && block->next->is_free)//need to merge block with block before
     {
         removeFromListSize(block);
         removeFromListSize(block->next);
@@ -256,7 +260,7 @@ void BlocksLinkedList::freeBlock(void* ptr) {
 
 void BlocksLinkedList::split(MetaData block, size_t size)
 {
-    if(block->size < 128 + size + sizeof(MallocMetaData)) 
+    if(block->size < 128 + size + sizeof(MallocMetaData))
     {
         return;
     }
@@ -268,8 +272,8 @@ void BlocksLinkedList::split(MetaData block, size_t size)
     if(block->next && block->next->is_free)
     {
         new_alloc->size += block->next->size + sizeof(MallocMetaData);
+        removeFromListSize(block->next);
         removeFromListAddress(block->next);
-        removeFromListSize(block->next_by_size);
     }
     insertToListSize(new_alloc);
     removeFromListSize(block);
@@ -331,6 +335,21 @@ size_t BlocksLinkedList::getNumOfFreeBytes() {
     }
     return counter;
 }
+
+void BlocksLinkedList::printFreeBlocks() {
+    MetaData iterator = this->list_by_size;
+    int counter = 1;
+    while (iterator) {
+        std::cout << "#########" << std::endl;
+        std::cout << "#########" << std::endl;
+        std::cout << "size of block number " << counter++ << " in bytes is " << iterator->size << std::endl;
+        std::cout << "#########" << std::endl;
+        std::cout << "#########" << std::endl;
+        std::cout << std::endl;
+        iterator = iterator->next;
+    }
+}
+
 ///////////////////////////////////
 // Basic malloc implementations //
 /////////////////////////////////
@@ -380,12 +399,12 @@ void sfree(void* p) {
     if (p == NULL) {
         return;
     }
-    MetaData data=blocks_list.get_metadata(p);
+    MetaData data = blocks_list.get_metadata(p);
 
-    if(data->size>=MAP_SIZE)
+    if(data->size >= MAP_SIZE)
     {
         blocks_list.num_of_map--;
-        blocks_list.bytes_of_map-=data->size;
+        blocks_list.bytes_of_map -= data->size;
         munmap(data, sizeof(MallocMetaData) + data->size);
     }
     else
@@ -428,8 +447,9 @@ void* srealloc(void* oldp, size_t size) {
         blocks_list.removeFromListSize(oldb->prev);
         oldb->prev->size = blocks_list.alignTo8(possible_size);
         oldb->prev->is_free = false;
-        blocks_list.split(oldb->prev, size);
         blocks_list.removeFromListAddress(oldb);
+        blocks_list.split(prev_block, size);
+
         memmove( (char *) prev_block + sizeof(MallocMetaData), oldp, oldb->size);
         return (char *) prev_block + sizeof(MallocMetaData);
     }
@@ -441,7 +461,7 @@ void* srealloc(void* oldp, size_t size) {
             if (prog_break == (void*) -1) {
                 return NULL;
             }
-            if(oldb->prev != NULL)
+            if(oldb->prev != NULL && oldb->prev->is_free)
             {
                 MetaData prev_block = oldb->prev;
                 oldb->prev->size = blocks_list.alignTo8(size);
@@ -486,14 +506,20 @@ void* srealloc(void* oldp, size_t size) {
     }
     if(possible_size >= size)
     {//case E try all three blocks
+        //blocks_list.printFreeBlocks();
         MetaData prev_block = oldb->prev;
-        blocks_list.removeFromListSize(oldb);
+        oldb->prev->is_free=false;
         blocks_list.removeFromListSize(oldb->prev);
         blocks_list.removeFromListSize(oldb->next);
+        blocks_list.removeFromListSize(oldb);
+
+        //blocks_list.printFreeBlocks();
         oldb->prev->size = blocks_list.alignTo8(possible_size);
         blocks_list.removeFromListAddress(oldb->next);
         blocks_list.removeFromListAddress(oldb);
+        blocks_list.split(prev_block, size);
         memmove( (char *) prev_block + sizeof(MallocMetaData), oldp, oldb->size);
+
         return (char *) prev_block + sizeof(MallocMetaData);
     }
     else
